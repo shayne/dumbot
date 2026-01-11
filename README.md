@@ -76,6 +76,7 @@ Notes:
 
 - `DUMBOT_DB_FILE` controls the main app database path. If you set it under `/data` (as above), the SQLite DB is persisted on the host.
 - `DUMBOT_STORAGE_DIR` holds per-channel databases, media, and attachments. This is also persisted on the host.
+- The container runs as an unprivileged user. Ensure the mounted host directory is writable by the container user or the service will fail to open the SQLite DB.
 
 ---
 
@@ -97,6 +98,7 @@ services:
       - TAVILY_API_KEY=YOUR_TAVILY_KEY
       - TZ=Etc/UTC
     volumes:
+      # Ensure the host directory is writable by the container user.
       - ./data:/data
     restart: unless-stopped
 ```
