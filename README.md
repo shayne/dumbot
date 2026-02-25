@@ -1,70 +1,26 @@
 # Dumbot
 
-Dumbot is a virtual AI assistant that never forgets. Every conversation is stored in a dynamic database so it can remember what you told it yesterday, last week, or last month and keep the context consistent over time.
+Dumbot is a persistent AI assistant with long-term memory and Telegram integration.
+It stores conversation history in SQLite so context carries across sessions.
 
----
+## Quick Start (Docker)
 
-## What Dumbot does
+1. Create a Telegram bot with `@BotFather` and copy `TELEGRAM_BOT_TOKEN`.
+2. Choose an LLM provider:
+   - Anthropic (default): set `ANTHROPIC_API_KEY`
+   - OpenAI: set `DUMBOT_LLM_PROVIDER=openai` and `OPENAI_API_KEY`
+3. Run the container.
 
-- **Long‑term memory**: Dumbot stores everything it is told in a database, so it can keep context across conversations.
-- **Telegram integration**: Chat with Dumbot inside Telegram.
-- **Optional web search**: Connect Tavily to give Dumbot live web search.
-
----
-
-## What you need
-
-- A Linux server (or any machine that can run Docker).
-- A Telegram bot token from @BotFather.
-- An Anthropic API key (required).
-- Optional: a Tavily API key for web search.
-
----
-
-## Step 1 — Create a Telegram bot
-
-1. Open Telegram and search for **@BotFather**.
-2. Send `/newbot` and follow the prompts to create your bot.
-3. Copy the **bot token** that BotFather gives you.
-
-Helpful Telegram docs:
-
-- BotFather guide: `https://core.telegram.org/bots/features#botfather`
-- Bot tutorial: `https://core.telegram.org/bots/tutorial`
-
----
-
-## Step 2 — Get your API keys
-
-### Anthropic (required)
-
-You must set `ANTHROPIC_API_KEY` or Dumbot will not start.
-
-Create an Anthropic account and generate an API key in the Anthropic Console (Account Settings):
-
-- Anthropic Console: `https://console.anthropic.com`
-- API docs (getting started): `https://docs.anthropic.com/en/api/getting-started`
-
-### Tavily (optional, enables web search)
-
-If you want Dumbot to search the web, create a Tavily account and copy an API key from your dashboard:
-
-- Tavily website: `https://tavily.com`
-- API key help: `https://help.tavily.com/articles/9170796666-how-can-i-create-an-api-key`
-
----
-
-## Step 3 — Run with Docker (linuxserver.io style)
-
-Replace values in ALL_CAPS with your own:
+OpenAI example:
 
 ```bash
 docker run -d \
   --name dumbot \
   -e TZ=Etc/UTC \
-  -e ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY \
   -e TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN \
-  -e TAVILY_API_KEY=YOUR_TAVILY_KEY \
+  -e DUMBOT_LLM_PROVIDER=openai \
+  -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY \
+  -e DUMBOT_OPENAI_EMPTY_COMPLETED_MESSAGE_RETRY_LIMIT=5 \
   -e DUMBOT_DB_FILE=/data/dumbot.db \
   -e DUMBOT_STORAGE_DIR=/data \
   -v /path/on/host/dumbot:/data \
@@ -72,17 +28,22 @@ docker run -d \
   ghcr.io/shayne/dumbot:latest
 ```
 
-Notes:
+Anthropic example:
 
-- `DUMBOT_DB_FILE` controls the main app database path. If you set it under `/data` (as above), the SQLite DB is persisted on the host.
-- `DUMBOT_STORAGE_DIR` holds per-channel databases, media, and attachments. This is also persisted on the host.
-- The container runs as an unprivileged user. Ensure the mounted host directory is writable by the container user or the service will fail to open the SQLite DB.
+```bash
+docker run -d \
+  --name dumbot \
+  -e TZ=Etc/UTC \
+  -e TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN \
+  -e ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY \
+  -e DUMBOT_DB_FILE=/data/dumbot.db \
+  -e DUMBOT_STORAGE_DIR=/data \
+  -v /path/on/host/dumbot:/data \
+  --restart unless-stopped \
+  ghcr.io/shayne/dumbot:latest
+```
 
----
-
-## Step 4 — Docker Compose example
-
-Create a file named `compose.yml`:
+## Docker Compose
 
 ```yaml
 services:
@@ -90,37 +51,71 @@ services:
     image: ghcr.io/shayne/dumbot:latest
     container_name: dumbot
     environment:
-      - ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY
       - TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+      # Provider selection:
+      - DUMBOT_LLM_PROVIDER=openai
+      - OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+      # or use Anthropic instead:
+      # - ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
+
+      # Optional model override:
+      # - DUMBOT_LLM_MODEL=gpt-5.3-codex
+
+      # Optional: retries before showing retry button for empty OpenAI responses
+      - DUMBOT_OPENAI_EMPTY_COMPLETED_MESSAGE_RETRY_LIMIT=5
+
       - DUMBOT_DB_FILE=/data/dumbot.db
       - DUMBOT_STORAGE_DIR=/data
       # Optional:
-      - TAVILY_API_KEY=YOUR_TAVILY_KEY
-      - TZ=Etc/UTC
+      # - TAVILY_API_KEY=YOUR_TAVILY_KEY
+      # - DUMBOT_DEBUG=1
+      # - TZ=Etc/UTC
     volumes:
-      # Ensure the host directory is writable by the container user.
       - ./data:/data
     restart: unless-stopped
 ```
 
-Start it:
+## Environment Variables
 
-```bash
-docker compose up -d
-```
+### Core
 
----
+- `TELEGRAM_BOT_TOKEN` (required for Telegram bot operation)
+- `DUMBOT_LLM_PROVIDER` (`anthropic` default, or `openai`)
+- `DUMBOT_LLM_MODEL` (optional model override)
+- `DUMBOT_DB_FILE` (default `data/dumbot.db`)
+- `DUMBOT_STORAGE_DIR` (default `./storage`)
+- `DUMBOT_PUBLIC_URL` (optional override for public base URL)
+- `DUMBOT_DEBUG` (`1/true/yes/on` enables verbose diagnostics)
+
+### Provider keys
+
+- `ANTHROPIC_API_KEY` (required when provider is `anthropic`)
+- `OPENAI_API_KEY` (required when provider is `openai`)
+
+### OpenAI-specific runtime tuning
+
+- `DUMBOT_OPENAI_EMPTY_COMPLETED_MESSAGE_RETRY_LIMIT`
+  - Retries top-level transient empty OpenAI Responses replies before returning a retry error to the user.
+  - Default behavior in Dumbot is `5` retries.
+
+### Optional integrations
+
+- `TAVILY_API_KEY` (web search tools)
+- `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`
+- `TWILIO_AUTH_TOKEN`, `TWILIO_WEBHOOK_URL`, `TWILIO_ACCOUNT_SID`
+
+## Notes
+
+- The container runs as an unprivileged user. Ensure the mounted data directory is writable.
+- If using OpenAI, keep `DUMBOT_OPENAI_EMPTY_COMPLETED_MESSAGE_RETRY_LIMIT` at a positive value (the default `5` is recommended).
+- If retries are exhausted for a transient empty model reply, Dumbot returns a friendly failure message and presents a Telegram retry button.
 
 ## Troubleshooting
 
-- **Dumbot won’t start**: Make sure `ANTHROPIC_API_KEY` is set.
-- **Telegram messages not working**: Confirm your `TELEGRAM_BOT_TOKEN` is correct and the bot is started in Telegram.
-- **Web search missing**: Set `TAVILY_API_KEY` to enable Tavily.
-
----
-
-## Security tips
-
-- Treat all API keys like passwords.
-- Do not share them publicly.
-- Use environment variables (as shown above) instead of hard‑coding keys.
+- No responses in Telegram:
+  - verify `TELEGRAM_BOT_TOKEN`
+  - verify provider key for the selected `DUMBOT_LLM_PROVIDER`
+- Bot starts but search tools missing:
+  - set `TAVILY_API_KEY`
+- Need deeper diagnostics:
+  - set `DUMBOT_DEBUG=1` and inspect container logs
